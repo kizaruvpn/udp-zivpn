@@ -26,7 +26,7 @@ Server binary available for **Linux amd64**, **arm**, and **arm64** with automat
 ## 📦 Installation Menu
 
 ```bash
-apt update -y && wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/install.sh -O /usr/local/bin/install.sh && chmod +x /usr/local/bin/install.sh && /usr/local/bin/install.sh
+apt update -y && wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/install.sh -O /usr/local/bin/install.sh && chmod +x /usr/local/bin/install.sh && /usr/local/bin/install.sh
 ```
 
 > Installer akan otomatis:
@@ -41,7 +41,7 @@ apt update -y && wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivp
 ## 🔧 Fix ZIVPN
 
 ```bash
-wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/fix-zivpn.sh -O /usr/local/bin/fix-zivpn.sh && chmod +x /usr/local/bin/fix-zivpn.sh && /usr/local/bin/fix-zivpn.sh
+wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/fix-zivpn.sh -O /usr/local/bin/fix-zivpn.sh && chmod +x /usr/local/bin/fix-zivpn.sh && /usr/local/bin/fix-zivpn.sh
 ```
 
 > Script ini akan:
@@ -53,7 +53,7 @@ wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/fix-zivpn.
 ## 📦 Update Menu
 
 ```bash
-wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/update.sh -O /usr/local/bin/update-manager && chmod +x /usr/local/bin/update-manager && /usr/local/bin/update-manager
+wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/update.sh -O /usr/local/bin/update-manager && chmod +x /usr/local/bin/update-manager && /usr/local/bin/update-manager
 ```
 
 > Installer akan otomatis:
@@ -67,7 +67,7 @@ wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/update.sh 
 ## 🧼 Uninstall Menu
 
 ```bash
-wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/uninstall.sh -O /usr/local/bin/uninstall-zivpn && chmod +x /usr/local/bin/uninstall-zivpn && /usr/local/bin/uninstall-zivpn
+wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/uninstall.sh -O /usr/local/bin/uninstall-zivpn && chmod +x /usr/local/bin/uninstall-zivpn && /usr/local/bin/uninstall-zivpn
 ```
 
 > Uninstall akan:
