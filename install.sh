@@ -40,6 +40,6 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/zivpn-manager -O /usr/local/bin/zivpn-manager
+wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/zivpn-manager -O /usr/local/bin/zivpn-manager
 chmod +x /usr/local/bin/zivpn-manager
 /usr/local/bin/zivpn-manager

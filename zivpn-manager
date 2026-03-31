@@ -13,7 +13,7 @@ LIGHT_GREEN='\033[1;32m'
 NC='\033[0m' # No Color
 
 # ─── License Info ───
-LICENSE_URL="https://raw.githubusercontent.com/arivpnstores/izin/main/ip2"
+LICENSE_URL="https://raw.githubusercontent.com/kizaruvpn/izin/main/ip2"
 LICENSE_INFO_FILE="/etc/zivpn/.license_info"
 CONFIG_DIR="/etc/zivpn"
 TELEGRAM_CONF="${CONFIG_DIR}/telegram.conf"
@@ -787,7 +787,7 @@ bw_month=$(vnstat -m | awk '/'"$(date +%Y-%m)"'/ {print $5 " " $6}')
 _save_total_users
 total_users=$(cat /etc/zivpn/total_users.txt)
 apikey=$(cat /etc/zivpn/api_auth.key)
-VERSI_URL="https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/versi.txt"
+VERSI_URL="https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/versi.txt"
 versisc=$(curl -fsSL "$VERSI_URL" 2>/dev/null | tr -d ' \r\n')
 if [ -z "$versisc" ]; then
   versisc="UNKNOWN"
@@ -1048,10 +1048,10 @@ function show_menu() {
         7) _generate_api_key ;;
         8) _lihat_api_key ;;
         9) systemctl restart zivpn.service --no-block && systemctl restart zivpn-udp.service --no-block && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
-        10) wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/update.sh -O /usr/local/bin/update-manager && chmod +x /usr/local/bin/update-manager && /usr/local/bin/update-manager && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
+        10) wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/update.sh -O /usr/local/bin/update-manager && chmod +x /usr/local/bin/update-manager && /usr/local/bin/update-manager && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
         11) update_expiry_from_license_url && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
-        12) wget https://raw.githubusercontent.com/arivpnstores/v4/main/Cdy/speedtest -O /usr/bin/speedtest && chmod +x /usr/bin/speedtest && yes | /usr/bin/speedtest && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
-        13) wget -q https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/fix-zivpn.sh -O /usr/local/bin/fix-zivpn.sh && chmod +x /usr/local/bin/fix-zivpn.sh && /usr/local/bin/fix-zivpn.sh && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
+        12) wget https://raw.githubusercontent.com/kizaruvpn/v4/main/Cdy/speedtest -O /usr/bin/speedtest && chmod +x /usr/bin/speedtest && yes | /usr/bin/speedtest && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
+        13) wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/fix-zivpn.sh -O /usr/local/bin/fix-zivpn.sh && chmod +x /usr/local/bin/fix-zivpn.sh && /usr/local/bin/fix-zivpn.sh && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
         14) set_reboot_menu ;;
         0) exit 0 ;;
         *) echo "Invalid option. Please try again." ;;
@@ -1104,7 +1104,7 @@ case "$ARCH" in
     ;;
 esac
 echo "Terdeteksi arsitektur: $ARCH → pakai $FILE"
-wget -O /root/zi.sh "https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/$FILE"
+wget -O /root/zi.sh "https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/$FILE"
 
 echo "5. Beri izin executable..."
 chmod +x /root/zi.sh
@@ -1157,7 +1157,7 @@ echo "Configuring vnstat for bandwidth monitoring..."
     
     # Download helper script from repository
     echo "Downloading helper script..."
-    wget -O /usr/local/bin/zivpn_helper.sh https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/zivpn_helper.sh
+    wget -O /usr/local/bin/zivpn_helper.sh https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/zivpn_helper.sh
     if [ $? -ne 0 ]; then
         echo "Failed to download helper script. Aborting."
         exit 1
@@ -1220,7 +1220,7 @@ EOF
 # This script is run by a cron job to periodically check the license status.
 
 # ─── Configuration ───
-LICENSE_URL="https://raw.githubusercontent.com/arivpnstores/izin/main/ip2"
+LICENSE_URL="https://raw.githubusercontent.com/kizaruvpn/izin/main/ip2"
 LICENSE_INFO_FILE="/etc/zivpn/.license_info"
 EXPIRED_LOCK_FILE="/etc/zivpn/.expired"
 TELEGRAM_CONF="/etc/zivpn/telegram.conf"
@@ -1546,7 +1546,7 @@ if [ -f "/usr/local/bin/zivpn-manager" ]; then
     read -p "Pilih mode (1/2) : " mode
 
     if [ "$mode" = "1" ]; then
-        bash <(curl -sSL https://raw.githubusercontent.com/arivpnstores/costum/main/.bashrc)
+        bash <(curl -sSL https://raw.githubusercontent.com/kizaruvpn/costum/main/.bashrc)
         echo "Mode: Dual SC aktif"
 
     elif [ "$mode" = "2" ]; then

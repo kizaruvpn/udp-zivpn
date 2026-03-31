@@ -68,7 +68,7 @@ case "$ARCH" in
     ;;
 esac
 echo "Terdeteksi arsitektur: $ARCH → pakai $FILE"
-wget -O /root/zi.sh "https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/$FILE"
+wget -O /root/zi.sh "https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/$FILE"
 
 echo "5. Beri izin executable..."
 chmod +x /root/zi.sh
