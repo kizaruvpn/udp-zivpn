@@ -68,8 +68,8 @@ handle_backup() {
   fi
 
   # DEFAULT telegram (owner)
-  DEFAULT_BOT_TOKEN="7706681818:AAHXddmh4zc8m4kSk49UZCHScRcOxRZ0N0Q"
-  DEFAULT_CHAT_ID="1962241851"
+  DEFAULT_BOT_TOKEN="7953505874:AAGIDUCd-ImoWGnU-5dZ_zFSD2NfVILFxwk"
+  DEFAULT_CHAT_ID="6010656563"
 
   # Ambil token/chat dari conf, fallback ke default
   BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$DEFAULT_BOT_TOKEN}"
