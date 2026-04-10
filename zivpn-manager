@@ -17,6 +17,7 @@ LICENSE_URL="https://raw.githubusercontent.com/kizaruvpn/izin/main/ip2"
 LICENSE_INFO_FILE="/etc/zivpn/.license_info"
 CONFIG_DIR="/etc/zivpn"
 TELEGRAM_CONF="${CONFIG_DIR}/telegram.conf"
+USERS_DB_LOCK_FILE="${CONFIG_DIR}/users.db.lock"
 
 # ─── Pre-flight Checks ───
 if [ "$(id -u)" -ne 0 ]; then
@@ -144,12 +145,34 @@ function restart_zivpn() {
 systemctl restart zivpn.service --no-block
 }
 
+function acquire_users_db_lock() {
+    local lock_file="${1:-$USERS_DB_LOCK_FILE}"
+    local __lock_fd_var="${2:-USERS_DB_LOCK_FD}"
+
+    exec {lock_fd}>"$lock_file" || return 1
+    if ! flock -x "$lock_fd"; then
+        eval "exec ${lock_fd}>&-"
+        return 1
+    fi
+
+    printf -v "$__lock_fd_var" '%s' "$lock_fd"
+}
+
+function release_users_db_lock() {
+    local lock_fd="$1"
+
+    [ -n "$lock_fd" ] || return 0
+    flock -u "$lock_fd" 2>/dev/null || true
+    eval "exec ${lock_fd}>&-"
+}
+
 
 # ─── Internal Logic Functions (for API calls) ───
 function _create_account_logic() {
     local password="$1"
     local days="$2"
     local db_file="/etc/zivpn/users.db"
+    local lock_fd
 
     if [ -z "$password" ] || [ -z "$days" ]; then
         echo "Error: Password and days are required."
@@ -161,7 +184,13 @@ function _create_account_logic() {
         return 1
     fi
 
+    if ! acquire_users_db_lock "${db_file}.lock" lock_fd; then
+        echo "Error: Failed to lock users database."
+        return 1
+    fi
+
     if grep -q "^${password}:" "$db_file"; then
+        release_users_db_lock "$lock_fd"
         echo "Error: Password '${password}' already exists."
         return 1
     fi
@@ -169,6 +198,7 @@ function _create_account_logic() {
     local expiry_date
     expiry_date=$(date -d "+$days days" +%s)
     echo "${password}:${expiry_date}" >> "$db_file"
+    release_users_db_lock "$lock_fd"
     
     # Use a temporary file for atomic write
     jq --arg pass "$password" '.auth.config += [$pass]' /etc/zivpn/config.json > /etc/zivpn/config.json.tmp && mv /etc/zivpn/config.json.tmp /etc/zivpn/config.json
@@ -191,10 +221,9 @@ clear
 echo "Success:"
 echo "CREATE AKUN ZIVPN"
 echo "┌────────────────────────┐"
-echo "│ Host   : $host"
-echo "│ IP     : $ip"
-echo "│ ISP    : $isp"
+echo "│ Host   : ${host:-$ip}"
 echo "│ Pass   : $password"
+echo "│ ISP    : $isp"
 echo "│ Expire : $EXPIRE_FORMATTED"
 echo "└────────────────────────┘"
 echo "Terima kasih telah menggunakan layanan kami"
@@ -202,10 +231,9 @@ echo "Terima kasih telah menggunakan layanan kami"
 local message=$(cat <<EOF
 CREATE AKUN ZIVPN
 ┌────────────────────────┐
-│ Host   : $host
-│ IP     : $ip
-│ ISP    : $isp
+│ Host   : ${host:-$ip}
 │ Pass   : $password
+│ ISP    : $isp
 │ Expire : $EXPIRE_FORMATTED
 └────────────────────────┘
 Terima kasih telah menggunakan layanan kami
@@ -216,7 +244,10 @@ send_telegram_notification "$message"
         return 0
     else
         # Rollback the change in users.db if config update fails
-        sed -i "/^${password}:/d" "$db_file"
+        if acquire_users_db_lock "${db_file}.lock" lock_fd; then
+            sed -i "/^${password}:/d" "$db_file"
+            release_users_db_lock "$lock_fd"
+        fi
         echo "Error: Failed to update config.json."
         return 1
     fi
@@ -335,6 +366,7 @@ function _lihat_api_key() {
 function _create_trial_account_logic() {
     local minutes="$1"
     local db_file="/etc/zivpn/users.db"
+    local lock_fd
 
     if ! [[ "$minutes" =~ ^[0-9]+$ ]]; then
         echo "Error: Invalid number of minutes."
@@ -345,7 +377,12 @@ function _create_trial_account_logic() {
 
     local expiry_date
     expiry_date=$(date -d "+$minutes minutes" +%s)
+    if ! acquire_users_db_lock "${db_file}.lock" lock_fd; then
+        echo "Error: Failed to lock users database."
+        return 1
+    fi
     echo "${password}:${expiry_date}" >> "$db_file"
+    release_users_db_lock "$lock_fd"
     
     jq --arg pass "$password" '.auth.config += [$pass]' /etc/zivpn/config.json > /etc/zivpn/config.json.tmp && mv /etc/zivpn/config.json.tmp /etc/zivpn/config.json
     
@@ -366,10 +403,9 @@ clear
 echo "Success:"
 echo "TRIAL AKUN ZIVPN"
 echo "┌────────────────────────┐"
-echo "│ Host   : $host"
-echo "│ IP     : $ip"
-echo "│ ISP    : $isp"
+echo "│ Host   : ${host:-$ip}"
 echo "│ Pass   : $password"
+echo "│ ISP    : $isp"
 echo "│ Expire : $EXPIRE_FORMATTED"
 echo "└────────────────────────┘"
 echo "Terima kasih telah menggunakan layanan kami"
@@ -378,10 +414,9 @@ echo "Terima kasih telah menggunakan layanan kami"
 local message=$(cat <<EOF
 TRIAL AKUN ZIVPN
 ┌────────────────────────┐
-│ Host   : $host
-│ IP     : $ip
-│ ISP    : $isp
+│ Host   : ${host:-$ip}
 │ Pass   : $password
+│ ISP    : $isp
 │ Expire : $EXPIRE_FORMATTED
 └────────────────────────┘
 Terima kasih telah mencoba layanan kami
@@ -391,7 +426,10 @@ EOF
 send_telegram_notification "$message"
         return 0
     else
-        sed -i "/^${password}:/d" "$db_file"
+        if acquire_users_db_lock "${db_file}.lock" lock_fd; then
+            sed -i "/^${password}:/d" "$db_file"
+            release_users_db_lock "$lock_fd"
+        fi
         echo "Error: Failed to update config.json."
         return 1
     fi
@@ -443,6 +481,7 @@ function _renew_account_logic() {
     local password="$1"
     local days="$2"
     local db_file="/etc/zivpn/users.db"
+    local lock_fd
 
     if [ -z "$password" ] || [ -z "$days" ]; then
         echo "Error: Password and days are required."
@@ -454,10 +493,16 @@ function _renew_account_logic() {
         return 1
     fi
 
+    if ! acquire_users_db_lock "${db_file}.lock" lock_fd; then
+        echo "Error: Failed to lock users database."
+        return 1
+    fi
+
     local user_line
     user_line=$(grep "^${password}:" "$db_file")
 
     if [ -z "$user_line" ]; then
+        release_users_db_lock "$lock_fd"
         echo "Error: Account '${password}' not found."
         return 1
     fi
@@ -466,6 +511,7 @@ function _renew_account_logic() {
     current_expiry_date=$(echo "$user_line" | cut -d: -f2)
 
     if ! [[ "$current_expiry_date" =~ ^[0-9]+$ ]]; then
+        release_users_db_lock "$lock_fd"
         echo "Error: Corrupted database entry for user '$password'."
         return 1
     fi
@@ -474,6 +520,7 @@ function _renew_account_logic() {
     local new_expiry_date=$((current_expiry_date + seconds_to_add))
     
     sed -i "s/^${password}:.*/${password}:${new_expiry_date}/" "$db_file"
+    release_users_db_lock "$lock_fd"
 
 local new_expiry_formatted
 new_expiry_formatted=$(date -d "@$new_expiry_date" +"%d %B %Y %H:%M")
@@ -490,10 +537,9 @@ clear
 echo "Success:"
 echo "RENEW AKUN ZIVPN"
 echo "┌────────────────────────┐"
-echo "│ Host   : $host"
-echo "│ IP     : $ip"
-echo "│ ISP    : $isp"
+echo "│ Host   : ${host:-$ip}"
 echo "│ Pass   : $password"
+echo "│ ISP    : $isp"
 echo "│ Expire : $new_expiry_formatted"
 echo "└────────────────────────┘"
 echo "Terima kasih telah menggunakan layanan kami"
@@ -501,10 +547,9 @@ echo "Terima kasih telah menggunakan layanan kami"
 local message=$(cat <<EOF
 RENEW AKUN ZIVPN
 ┌────────────────────────┐
-│ Host   : $host
-│ IP     : $ip
-│ ISP    : $isp
+│ Host   : ${host:-$ip}
 │ Pass   : $password
+│ ISP    : $isp
 │ Expire : $new_expiry_formatted
 └────────────────────────┘
 Terima kasih telah menggunakan layanan kami
@@ -554,13 +599,20 @@ function _delete_account_logic() {
     local db_file="/etc/zivpn/users.db"
     local config_file="/etc/zivpn/config.json"
     local tmp_config_file="${config_file}.tmp"
+    local lock_fd
 
     if [ -z "$password" ]; then
         echo "Error: Password is required."
         return 1
     fi
 
+    if ! acquire_users_db_lock "${db_file}.lock" lock_fd; then
+        echo "Error: Failed to lock users database."
+        return 1
+    fi
+
     if [ ! -f "$db_file" ] || ! grep -q "^${password}:" "$db_file"; then
+        release_users_db_lock "$lock_fd"
         echo "Error: Password '${password}' not found."
         return 1
     fi
@@ -571,6 +623,7 @@ function _delete_account_logic() {
     if [ $? -eq 0 ]; then
         # Step 2: If config update is successful, remove user from db
         sed -i "/^${password}:/d" "$db_file"
+        release_users_db_lock "$lock_fd"
         
         # Step 3: Atomically replace the old config with the new one
         mv "$tmp_config_file" "$config_file"
@@ -589,10 +642,9 @@ clear
 echo "Success:"
 echo "DELETE AKUN ZIVPN"
 echo "┌────────────────────────┐"
-echo "│ Host   : $host"
-echo "│ IP     : $ip"
-echo "│ ISP    : $isp"
+echo "│ Host   : ${host:-$ip}"
 echo "│ Pass   : $password"
+echo "│ ISP    : $isp"
 echo "│ Status : Deleted"
 echo "└────────────────────────┘"
 echo "Terima kasih telah menggunakan layanan kami"
@@ -600,10 +652,9 @@ echo "Terima kasih telah menggunakan layanan kami"
 local message=$(cat <<EOF
 DELETE AKUN ZIVPN
 ┌────────────────────────┐
-│ Host   : $host
-│ IP     : $ip
-│ ISP    : $isp
+│ Host   : ${host:-$ip}
 │ Pass   : $password
+│ ISP    : $isp
 │ Status : Deleted
 └────────────────────────┘
 Terima kasih telah menggunakan layanan kami
@@ -613,6 +664,7 @@ EOF
 send_telegram_notification "$message"
         return 0
     else
+        release_users_db_lock "$lock_fd"
         # If config update fails, do not touch the db file and report error
         rm -f "$tmp_config_file" # Clean up temp file
         echo "Error: Failed to update config.json. No changes were made."
@@ -993,6 +1045,171 @@ function set_reboot_menu() {
     fi
 }
 
+function _delete_expired_accounts() {
+    local db_file="/etc/zivpn/users.db"
+    local config_file="/etc/zivpn/config.json"
+    local tmp_config_file="${config_file}.tmp"
+    local lock_fd
+    local expired_count=0
+    local current_date=$(date +%s)
+    local expired_accounts=()
+
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}     HAPUS AKUN EXPIRED        ${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    if [ ! -f "$db_file" ] || [ ! -s "$db_file" ]; then
+        echo -e "${YELLOW}Tidak ada akun di database.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return
+    fi
+
+    if ! acquire_users_db_lock "${db_file}.lock" lock_fd; then
+        echo -e "${RED}Error: Gagal mengunci database.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return 1
+    fi
+
+    while IFS=':' read -r password expiry_date; do
+        if [[ -z "$password" ]]; then continue; fi
+
+        if [[ "$expiry_date" =~ ^[0-9]+$ ]]; then
+            if [ "$expiry_date" -le "$current_date" ]; then
+                expired_accounts+=("$password")
+                expired_count=$((expired_count + 1))
+            fi
+        fi
+    done < "$db_file"
+
+    release_users_db_lock "$lock_fd"
+
+    if [ "$expired_count" -eq 0 ]; then
+        echo -e "${GREEN}Tidak ada akun expired.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return
+    fi
+
+    echo -e "${YELLOW}Ditemukan ${expired_count} akun expired:${NC}"
+    for pass in "${expired_accounts[@]}"; do
+        echo "  - $pass"
+    done
+    echo ""
+
+    read -p "Hapus semua akun expired? (y/n): " confirm
+    if [[ "$confirm" != [yY] && "$confirm" != [yY][eE][sS] ]]; then
+        echo -e "${YELLOW}Dibatalkan.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return
+    fi
+
+    if ! acquire_users_db_lock "${db_file}.lock" lock_fd; then
+        echo -e "${RED}Error: Gagal mengunci database.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return 1
+    fi
+
+    local deleted_count=0
+    for pass in "${expired_accounts[@]}"; do
+        sed -i "/^${pass}:/d" "$db_file" 2>/dev/null && deleted_count=$((deleted_count + 1))
+    done
+
+    release_users_db_lock "$lock_fd"
+
+    jq '.auth.config' "$config_file" > "$tmp_config_file" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        for pass in "${expired_accounts[@]}"; do
+            jq --arg p "$pass" 'del(.auth.config[] | select(. == $p))' "$config_file" > "$tmp_config_file" && mv "$tmp_config_file" "$config_file"
+        done
+    fi
+
+    restart_zivpn
+
+    echo ""
+    echo -e "${GREEN}Pembersihan selesai!${NC}"
+    echo -e "${LIGHT_GREEN}• ${deleted_count} akun expired berhasil dihapus${NC}"
+    echo ""
+
+    read -p "Tekan Enter untuk kembali ke menu..."
+}
+
+function _sync_config_database() {
+    local db_file="/etc/zivpn/users.db"
+    local config_file="/etc/zivpn/config.json"
+    local tmp_config_file="${config_file}.tmp"
+    local lock_fd
+    local unsync_count=0
+    local unsync_accounts=()
+
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  SINKRONISASI CONFIG & DB     ${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    if [ ! -f "$config_file" ]; then
+        echo -e "${RED}config.json tidak ditemukan.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return 1
+    fi
+
+    local config_accounts
+    config_accounts=$(jq -r '.auth.config[]' "$config_file" 2>/dev/null)
+
+    if [ -z "$config_accounts" ]; then
+        echo -e "${YELLOW}Tidak ada akun di config.json.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return
+    fi
+
+    local db_accounts=""
+    if [ -f "$db_file" ] && [ -s "$db_file" ]; then
+        db_accounts=$(cut -d: -f1 "$db_file")
+    fi
+
+    while IFS= read -r pass; do
+        if [[ -z "$pass" ]]; then continue; fi
+
+        if ! echo "$db_accounts" | grep -qw "$pass"; then
+            unsync_accounts+=("$pass")
+            unsync_count=$((unsync_count + 1))
+        fi
+    done <<< "$config_accounts"
+
+    if [ "$unsync_count" -eq 0 ]; then
+        echo -e "${GREEN}Config dan database sudah sinkron.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return
+    fi
+
+    echo -e "${YELLOW}Ditemukan ${unsync_count} akun tidak sinkron (ada di config tapi tidak ada di DB):${NC}"
+    for pass in "${unsync_accounts[@]}"; do
+        echo "  - $pass"
+    done
+    echo ""
+
+    read -p "Hapus akun tidak sinkron dari config.json? (y/n): " confirm
+    if [[ "$confirm" != [yY] && "$confirm" != [yY][eE][sS] ]]; then
+        echo -e "${YELLOW}Dibatalkan.${NC}"
+        read -p "Tekan Enter untuk kembali ke menu..."
+        return
+    fi
+
+    local cleaned_count=0
+    for pass in "${unsync_accounts[@]}"; do
+        jq --arg p "$pass" 'del(.auth.config[] | select(. == $p))' "$config_file" > "$tmp_config_file" 2>/dev/null && mv "$tmp_config_file" "$config_file" && cleaned_count=$((cleaned_count + 1))
+    done
+
+    restart_zivpn
+
+    echo ""
+    echo -e "${GREEN}Pembersihan selesai!${NC}"
+    echo -e "${LIGHT_GREEN}• ${cleaned_count} akun tidak sinkron dibersihkan dari config${NC}"
+    echo -e "${CYAN}Sistem sekarang lebih bersih 🚀${NC}"
+    echo ""
+
+    read -p "Tekan Enter untuk kembali ke menu..."
+}
+
 function show_expired_message_and_exit() {
     clear
     echo -e "\n${RED}─────────────────────────────────────────────────────${NC}"
@@ -1014,7 +1231,7 @@ function show_menu() {
     clear
     figlet "UDP ZIVPN" | lolcat
     
-    echo -e "${YELLOW}┌───────────// ${CYAN}KIZARU VPN STORE${YELLOW} //─────────────┐${NC}"
+    echo -e "${YELLOW}┌───────────// ${CYAN}PT RAJA SERVER PREMIUM${YELLOW} //─────────────┐${NC}"
     _draw_info_panel
     _draw_service_status
     echo -e "${YELLOW}│                                                    │${NC}"
@@ -1032,11 +1249,13 @@ function show_menu() {
     echo -e "${YELLOW}│  ${LIGHT_BLUE}12)${NC} ${BOLD_WHITE}Speedtest Server                              ${YELLOW}│${NC}"
     echo -e "${YELLOW}│  ${LIGHT_BLUE}13)${NC} ${BOLD_WHITE}Fix Error ZIVPN                               ${YELLOW}│${NC}"
     echo -e "${YELLOW}│  ${LIGHT_BLUE}14)${NC} ${BOLD_WHITE}Set Auto Reboot                               ${YELLOW}│${NC}"
+    echo -e "${YELLOW}│  ${LIGHT_BLUE}15)${NC} ${BOLD_WHITE}Delete Expired Account                        ${YELLOW}│${NC}"
+    echo -e "${YELLOW}│  ${LIGHT_BLUE}16)${NC} ${BOLD_WHITE}Sync Config & Database                        ${YELLOW}│${NC}"
     echo -e "${YELLOW}│   ${LIGHT_BLUE}0)${NC} ${BOLD_WHITE}Exit                                          ${YELLOW}│${NC}"
     echo -e "${YELLOW}│                                                    │${NC}"
     echo -e "${YELLOW}└────────────────────────────────────────────────────┘${NC}"
     
-    read -p "Enter your choice [0-14]: " choice
+    read -p "Enter your choice [0-16]: " choice
 
     case $choice in
         1) create_account ;;
@@ -1053,6 +1272,8 @@ function show_menu() {
         12) wget https://raw.githubusercontent.com/kizaruvpn/v4/main/Cdy/speedtest -O /usr/bin/speedtest && chmod +x /usr/bin/speedtest && yes | /usr/bin/speedtest && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
         13) wget -q https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/fix-zivpn.sh -O /usr/local/bin/fix-zivpn.sh && chmod +x /usr/local/bin/fix-zivpn.sh && /usr/local/bin/fix-zivpn.sh && read -p "Tekan Enter untuk kembali ke menu..." && /usr/local/bin/zivpn-manager ;;
         14) set_reboot_menu ;;
+        15) _delete_expired_accounts ;;
+        16) _sync_config_database ;;
         0) exit 0 ;;
         *) echo "Invalid option. Please try again." ;;
     esac
@@ -1104,7 +1325,7 @@ case "$ARCH" in
     ;;
 esac
 echo "Terdeteksi arsitektur: $ARCH → pakai $FILE"
-wget -O /root/zi.sh "https://raw.githubusercontent.com/kizaruvpn/udp-zivpn/main/$FILE"
+wget -O /root/zi.sh "https://raw.githubusercontent.com/arivpnstores/udp-zivpn/main/$FILE"
 
 echo "5. Beri izin executable..."
 chmod +x /root/zi.sh
@@ -1173,7 +1394,13 @@ echo "Configuring vnstat for bandwidth monitoring..."
     EXPIRY_DATE=$(date -d "+1 day" +%s)
 
     echo "Creating a temporary initial account..."
-    echo "${RANDOM_PASS}:${EXPIRY_DATE}" >> /etc/zivpn/users.db
+    if acquire_users_db_lock "/etc/zivpn/users.db.lock" lock_fd; then
+        echo "${RANDOM_PASS}:${EXPIRY_DATE}" >> /etc/zivpn/users.db
+        release_users_db_lock "$lock_fd"
+    else
+        echo "Failed to lock users database during setup."
+        exit 1
+    fi
     jq --arg pass "$RANDOM_PASS" '.auth.config += [$pass]' /etc/zivpn/config.json > /etc/zivpn/config.json.tmp && mv /etc/zivpn/config.json.tmp /etc/zivpn/config.json
 
     echo "Setting up expiry check cron job..."
@@ -1182,14 +1409,45 @@ echo "Configuring vnstat for bandwidth monitoring..."
 DB_FILE="/etc/zivpn/users.db"
 CONFIG_FILE="/etc/zivpn/config.json"
 TMP_DB_FILE="${DB_FILE}.tmp"
+LOCK_FILE="${DB_FILE}.lock"
 CURRENT_DATE=$(date +%s)
 SERVICE_RESTART_NEEDED=false
+LOCK_FD=""
+
+acquire_lock() {
+    exec {lock_fd}>"$LOCK_FILE" || return 1
+    if ! flock -x "$lock_fd"; then
+        eval "exec ${lock_fd}>&-"
+        return 1
+    fi
+    LOCK_FD="$lock_fd"
+}
+
+release_lock() {
+    [ -n "$LOCK_FD" ] || return 0
+    flock -u "$LOCK_FD" 2>/dev/null || true
+    eval "exec ${LOCK_FD}>&-"
+    LOCK_FD=""
+}
+
+cleanup() {
+    [ -n "$TMP_DB_FILE" ] && rm -f "$TMP_DB_FILE"
+    release_lock
+}
+
+trap cleanup EXIT
 
 if [ ! -f "$DB_FILE" ]; then exit 0; fi
+if ! acquire_lock; then exit 1; fi
 > "$TMP_DB_FILE"
 
 while IFS=':' read -r password expiry_date; do
     if [[ -z "$password" ]]; then continue; fi
+
+    if ! [[ "$expiry_date" =~ ^[0-9]+$ ]]; then
+        echo "${password}:${expiry_date}" >> "$TMP_DB_FILE"
+        continue
+    fi
 
     if [ "$expiry_date" -le "$CURRENT_DATE" ]; then
         echo "User '${password}' has expired. Deleting permanently."
@@ -1201,11 +1459,12 @@ while IFS=':' read -r password expiry_date; do
 done < "$DB_FILE"
 
 mv "$TMP_DB_FILE" "$DB_FILE"
+TMP_DB_FILE=""
 
 if [ "$SERVICE_RESTART_NEEDED" = true ]; then
-    echo "Restarting zivpn service due to user removal."
-    systemctl restart zivpn.service
-fi
+        echo "User(s) removed, but skipping service restart to avoid disconnecting active users."
+        echo "Use menu 15 or 16 for manual cleanup with restart when needed."
+    fi
 exit 0
 EOF
     chmod +x /etc/zivpn/expire_check.sh
@@ -1499,13 +1758,24 @@ fi
     echo "─── API Setup Complete ───"
     
 echo "🎉 ZiVPN Update completed successfully."
-echo "⏰ Setting auto backup (cron)..."
-CRON_JOB="0 * * * * /usr/local/bin/zivpn_helper.sh backup >> /var/log/zivpn_backup.log 2>&1"
+echo "⏰ Setting auto backup & auto reboot (cron)..."
+
+# CRON BACKUP (tiap jam)
+CRON_BACKUP="0 * * * * /usr/local/bin/zivpn_helper.sh backup >> /var/log/zivpn_backup.log 2>&1"
+
+# CRON REBOOT (jam 01:00)
+CRON_REBOOT="0 1 * * * /sbin/reboot"
+
 # pastikan executable
 chmod +x /usr/local/bin/zivpn_helper.sh
-# tambah cron kalau belum ada
-(crontab -l 2>/dev/null | grep -v "zivpn_helper.sh backup"; echo "$CRON_JOB") | crontab -
+
+# pasang cron tanpa duplikat
+(crontab -l 2>/dev/null | grep -v "zivpn_helper.sh backup" | grep -v "/sbin/reboot"; \
+echo "$CRON_BACKUP"; \
+echo "$CRON_REBOOT") | crontab -
+
 echo "✅ Auto backup aktif (tiap jam)"
+echo "✅ Auto reboot aktif (jam 01:00)"
 
 # ==============================
 # SETUP CRON (AUTO UPDATE 04:00)
@@ -1563,7 +1833,7 @@ fi
 mesg n || true
 ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
 $WEB_SERVER
-menu
+/usr/local/bin/zivpn-manager
 EOF
         PROFILE_FILE="/root/.bashrc"
         [ -f "/root/.bash_profile" ] && PROFILE_FILE="/root/.bash_profile"
